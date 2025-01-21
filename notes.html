@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عرض ملاحظات الطلاب</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module">
+        // استيراد Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, query, orderBy, limit, startAfter, endBefore } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // إعداد Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEWffPfy-fljp32H8AjemraCau-f9JN-M",
+            authDomain: "student-notes-app-3d196.firebaseapp.com",
+            projectId: "student-notes-app-3d196",
+            storageBucket: "student-notes-app-3d196.appspot.com",
+            messagingSenderId: "99837564904",
+            appId: "1:99837564904:web:6b880e2b80e439c8fcf65d",
+            measurementId: "G-N63JWQNTZF"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // عناصر DOM
+        const notesContainer = document.getElementById("notesContainer");
+        const prevBtn = document.getElementById("prevBtn");
+        const nextBtn = document.getElementById("nextBtn");
+
+        // متغيرات التحكم في الصفحات
+        const pageSize = 5; // عدد الملاحظات لكل صفحة
+        let lastVisible = null;
+        let firstVisible = null;
+
+        // تحميل الملاحظات
+        async function loadNotes(direction = null) {
+            notesContainer.innerHTML = "جارٍ التحميل...";
+
+            let notesQuery;
+            if (direction === "next" && lastVisible) {
+                notesQuery = query(
+                    collection(db, "notes"),
+                    orderBy("timestamp", "desc"),
+                    startAfter(lastVisible),
+                    limit(pageSize)
+                );
+            } else if (direction === "prev" && firstVisible) {
+                notesQuery = query(
+                    collection(db, "notes"),
+                    orderBy("timestamp", "desc"),
+                    endBefore(firstVisible),
+                    limit(pageSize)
+                );
+            } else {
+                notesQuery = query(
+                    collection(db, "notes"),
+                    orderBy("timestamp", "desc"),
+                    limit(pageSize)
+                );
+            }
+
+            const querySnapshot = await getDocs(notesQuery);
+            if (!querySnapshot.empty) {
+                firstVisible = querySnapshot.docs[0];
+                lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
+
+                notesContainer.innerHTML = ""; // تنظيف الحاوية
+
+                querySnapshot.forEach((doc) => {
+                    const note = doc.data();
+                    const noteItem = document.createElement("div");
+                    noteItem.classList.add("note-item");
+                    noteItem.innerHTML = `
+                        <div>
+                            <strong>${note.name}</strong> - ${note.grade}
+                            <p>${note.note}</p>
+                            ${note.image ? `<img src="${note.image}" alt="صورة">` : ""}
+                        </div>
+                    `;
+                    notesContainer.appendChild(noteItem);
+                });
+            } else {
+                notesContainer.innerHTML = "لا توجد ملاحظات للعرض.";
+            }
+        }
+
+        // التحكم في الأزرار
+        prevBtn.addEventListener("click", () => loadNotes("prev"));
+        nextBtn.addEventListener("click", () => loadNotes("next"));
+
+        // تحميل الصفحة الأولى عند فتح الصفحة
+        window.onload = () => loadNotes();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>ملاحظات الطلاب</h1>
+        <div id="notesContainer" class="notes-container"></div>
+
+        <div class="pagination">
+            <button id="prevBtn">الصفحة السابقة</button>
+            <button id="nextBtn">الصفحة التالية</button>
+        </div>
+    </div>
+</body>
+</html>

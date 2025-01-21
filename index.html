@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ملاحظات الطلاب</title>
+    <style>
+        /* تنسيقات كما هي */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        input, textarea {
+            padding: 10px;
+            width: 100%;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .notes-list {
+            margin-top: 30px;
+        }
+        .note-item {
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .note-item img {
+            max-width: 100px;
+            max-height: 100px;
+            margin-left: 10px;
+        }
+    </style>
+    <!-- Firebase Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEWffPfy-fljp32H8AjemraCau-f9JN-M",
+            authDomain: "student-notes-app-3d196.firebaseapp.com",
+            projectId: "student-notes-app-3d196",
+            storageBucket: "student-notes-app-3d196.appspot.com",
+            messagingSenderId: "99837564904",
+            appId: "1:99837564904:web:6b880e2b80e439c8fcf65d",
+            measurementId: "G-N63JWQNTZF"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Load Notes
+        async function loadNotes() {
+            const notesList = document.getElementById('notes-list');
+            notesList.innerHTML = ''; // Clear current list
+            const querySnapshot = await getDocs(collection(db, "notes"));
+            querySnapshot.forEach((doc) => {
+                const note = doc.data();
+                const noteItem = document.createElement('div');
+                noteItem.classList.add('note-item');
+                noteItem.innerHTML = `
+                    <div>
+                        <strong>${note.name}</strong> - ${note.grade}
+                        <p>${note.note}</p>
+                        ${note.image ? `<img src="${note.image}" alt="صورة">` : ''}
+                    </div>
+                    <button onclick="deleteNote('${doc.id}')">حذف</button>
+                `;
+                notesList.appendChild(noteItem);
+            });
+        }
+
+        // Add Note
+        async function addNote() {
+            const name = document.getElementById('name').value;
+            const grade = document.getElementById('grade').value;
+            const note = document.getElementById('note').value;
+            const imageInput = document.getElementById('image');
+            let image = null;
+
+            if (imageInput.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = async function (e) {
+                    image = e.target.result;
+                    await addDoc(collection(db, "notes"), { name, grade, note, image });
+                    loadNotes();
+                };
+                reader.readAsDataURL(imageInput.files[0]);
+            } else {
+                await addDoc(collection(db, "notes"), { name, grade, note, image });
+                loadNotes();
+            }
+        }
+
+        // Delete Note
+        async function deleteNote(noteId) {
+            await deleteDoc(doc(db, "notes", noteId));
+            loadNotes();
+        }
+
+        // Form Submission
+        document.getElementById('note-form').addEventListener('submit', function (event) {
+            event.preventDefault();
+            addNote();
+            document.getElementById('note-form').reset();
+        });
+
+        // On Page Load
+        window.onload = loadNotes;
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>ملاحظات الطلاب</h1>
+        
+        <!-- زر الانتقال لعرض الملاحظات -->
+        <a href="notes.html" style="text-decoration: none;">
+            <button>عرض ملاحظات الطلاب</button>
+        </a>
+
+        <form id="note-form">
+            <input type="text" id="name" placeholder="الاسم" required>
+            <input type="text" id="grade" placeholder="المرحلة" required>
+            <textarea id="note" placeholder="اكتب ملاحظتك هنا" required></textarea>
+            <input type="file" id="image" accept="image/*">
+            <button type="submit" id="submit-note">مشاركة الملاحظة</button>
+        </form>
+
+        <div class="notes-list" id="notes-list">
+            <!-- سيتم عرض الملاحظات هنا -->
+        </div>
+    </div>
+</body>
+</html>

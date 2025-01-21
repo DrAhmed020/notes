@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم الإدارة</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .enabled {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .disabled {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // إعداد Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEWffPfy-fljp32H8AjemraCau-f9JN-M",
+            authDomain: "student-notes-app-3d196.firebaseapp.com",
+            projectId: "student-notes-app-3d196",
+            storageBucket: "student-notes-app-3d196.appspot.com",
+            messagingSenderId: "99837564904",
+            appId: "1:99837564904:web:6b880e2b80e439c8fcf65d",
+            measurementId: "G-N63JWQNTZF"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const settingsDocRef = doc(db, "adminSettings", "settings");
+
+        // تحميل الإعدادات الحالية من Firestore
+        async function loadSettings() {
+            const settingsSnap = await getDoc(settingsDocRef);
+
+            if (settingsSnap.exists()) {
+                const settings = settingsSnap.data();
+                updateUI(settings);
+            } else {
+                // إنشاء إعدادات افتراضية إذا لم تكن موجودة
+                await setDoc(settingsDocRef, { canAddNotes: false, allowImages: false });
+                updateUI({ canAddNotes: false, allowImages: false });
+            }
+        }
+
+        // تحديث واجهة المستخدم بناءً على الإعدادات
+        function updateUI(settings) {
+            const addNotesStatus = document.getElementById('addNotesStatus');
+            const addNotesText = document.getElementById('addNotesText');
+            const imageUploadStatus = document.getElementById('imageUploadStatus');
+            const imageUploadText = document.getElementById('imageUploadText');
+
+            if (settings.canAddNotes) {
+                addNotesStatus.classList.add('enabled');
+                addNotesStatus.classList.remove('disabled');
+                addNotesText.textContent = 'فعال';
+            } else {
+                addNotesStatus.classList.add('disabled');
+                addNotesStatus.classList.remove('enabled');
+                addNotesText.textContent = 'غير فعال';
+            }
+
+            if (settings.allowImages) {
+                imageUploadStatus.classList.add('enabled');
+                imageUploadStatus.classList.remove('disabled');
+                imageUploadText.textContent = 'فعال';
+            } else {
+                imageUploadStatus.classList.add('disabled');
+                imageUploadStatus.classList.remove('enabled');
+                imageUploadText.textContent = 'غير فعال';
+            }
+        }
+
+        // تحديث حالة الإعدادات في Firestore
+        async function toggleSetting(settingKey) {
+            const settingsSnap = await getDoc(settingsDocRef);
+            if (settingsSnap.exists()) {
+                const currentSettings = settingsSnap.data();
+                const newValue = !currentSettings[settingKey];
+                await updateDoc(settingsDocRef, { [settingKey]: newValue });
+                loadSettings();
+            }
+        }
+
+        // إضافة أحداث للأزرار
+        document.getElementById('toggleAddNotes').addEventListener('click', () => {
+            toggleSetting('canAddNotes');
+        });
+
+        document.getElementById('toggleImageUpload').addEventListener('click', () => {
+            toggleSetting('allowImages');
+        });
+
+        // تحميل الإعدادات عند بداية تحميل الصفحة
+        window.onload = loadSettings;
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>لوحة تحكم الإدارة</h1>
+        
+        <!-- عرض حالة إضافة الملاحظات -->
+        <div class="status" id="addNotesStatus">
+            <strong>إضافة الملاحظات:</strong> <span id="addNotesText">غير فعال</span>
+        </div>
+
+        <!-- عرض حالة رفع الصور -->
+        <div class="status" id="imageUploadStatus">
+            <strong>رفع الصور:</strong> <span id="imageUploadText">غير فعال</span>
+        </div>
+
+        <button id="toggleAddNotes">تفعيل/تعطيل إضافة الملاحظات</button>
+        <button id="toggleImageUpload">تفعيل/تعطيل رفع الصور</button>
+    </div>
+</body>
+</html>
