@@ -1,0 +1,219 @@
+<?php
+header("Content-Type: application/json; charset=UTF-8");
+
+// عرض جميع الأخطاء لمساعدتنا في التصحيح
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// 1️⃣ إعداد الاتصال بقاعدة البيانات MySQL
+$host = "localhost";
+$user = "root";       
+$pass = "";           
+$dbname = "sas_db";   
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch(PDOException $e) {
+    echo json_encode(["error" => "DB Connection Failed: " . $e->getMessage()]);
+    exit;
+}
+
+// 2️⃣ إعدادات الاتصال بـ MikroTik RouterOS
+require_once 'vendor/autoload.php'; // تحميل جميع المكتبات المثبتة عبر Composer
+
+use RouterOS\Client;
+use RouterOS\Query;
+
+$routeros_host = "20.20.20.1"; // عنوان المايكروتك
+$routeros_user = "admin";        // اسم المستخدم
+$routeros_pass = "*123123";     // كلمة المرور
+
+try {
+    $client = new Client([
+        'host' => $routeros_host,
+        'user' => $routeros_user,
+        'pass' => $routeros_pass,
+        'port' => 8728
+    ]);
+} catch (Exception $e) {
+    echo json_encode(["error" => "MikroTik Connection Failed: " . $e->getMessage()]);
+    exit;
+}
+
+// 3️⃣ قراءة `action` القادمة من جافاسكريبت
+$action = $_GET['action'] ?? null;
+
+// دالة المساعدة للاستجابة بصيغة JSON
+function respond($data) {
+    echo json_encode($data);
+    exit;
+}
+
+// 4️⃣ التفرع بناءً على نوع العملية
+if ($action === "load") {
+    $stmt = $pdo->prepare("SELECT * FROM subscribers");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    respond($rows);
+
+} elseif ($action === "add") {
+    $name = $_POST['name'] ?? '';
+    $user = $_POST['user'] ?? '';
+    $pass = $_POST['pass'] ?? '';
+    $type = $_POST['type'] ?? '';
+    $amount = $_POST['amount'] ?? '';
+    $isDebt = $_POST['isDebt'] ?? 0;
+    $status = "inactive"; // افتراضيًا يكون غير مفعل حتى يتم التفعيل عبر MikroTik
+    $reason = "";
+    $startDate = date('Y-m-d');
+    $endDate = date('Y-m-d', strtotime("+30 days"));
+
+    // 1️⃣ **التحقق مما إذا كان اسم المستخدم موجودًا في MySQL بالفعل**
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM subscribers WHERE user = :user");
+    $stmt->execute([':user' => $user]);
+    $count = $stmt->fetchColumn();
+
+    if ($count > 0) {
+        respond(["error" => "اسم المستخدم '$user' مستخدم بالفعل في قاعدة البيانات!"]);
+    }
+
+    // 2️⃣ **التحقق مما إذا كان المستخدم موجودًا في MikroTik قبل الإضافة**
+    try {
+        $query = new Query('/ppp/secret/print');
+        $query->where('name', $user);
+        $existingUsers = $client->query($query)->read();
+
+        if (!empty($existingUsers)) {
+            respond(["error" => "المستخدم '$user' موجود بالفعل في MikroTik!"]);
+        }
+    } catch (Exception $e) {
+        respond(["error" => "فشل الاتصال بـ MikroTik: " . $e->getMessage()]);
+    }
+
+    // 3️⃣ **إضافة المشترك إلى MySQL إذا لم يكن موجودًا مسبقًا**
+    $sql = "INSERT INTO subscribers (name, user, pass, type, amount, isDebt, status, reason, startDate, endDate)
+            VALUES (:name, :user, :pass, :type, :amount, :isDebt, :status, :reason, :startDate, :endDate)";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':name' => $name,
+        ':user' => $user,
+        ':pass' => $pass,
+        ':type' => $type,
+        ':amount' => $amount,
+        ':isDebt' => $isDebt,
+        ':status' => $status,
+        ':reason' => $reason,
+        ':startDate' => $startDate,
+        ':endDate' => $endDate
+    ]);
+
+    // 4️⃣ **إضافة المشترك إلى MikroTik**
+    try {
+        $query = new Query('/ppp/secret/add');
+        $query->add('=name=' . $user);
+        $query->add('=password=' . $pass);
+        $query->add('=service=pppoe');
+
+        // تحديد البروفايل بناءً على نوع الاشتراك
+        $profile = match ($type) {
+            "لايت" => "10M",
+            "ايكونمي" => "default",
+            "بلص" => "20M",
+            "ستندر" => "25M",
+            default => "default"
+        };
+        $query->add('=profile=' . $profile);
+
+        $client->write($query);
+
+    } catch (Exception $e) {
+        respond(["error" => "فشل إضافة المستخدم إلى MikroTik: " . $e->getMessage()]);
+    }
+
+    respond(["success" => true, "message" => "تمت إضافة المستخدم '$user' بنجاح في النظام و MikroTik!"]);
+	
+	
+
+} elseif ($action === "activate") {
+    $id = $_POST['id'] ?? null;
+    if (!$id) respond(["error" => "No ID provided"]);
+
+    $stmt = $pdo->prepare("SELECT user FROM subscribers WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $subscriber = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$subscriber) {
+        respond(["error" => "Subscriber not found"]);
+    }
+
+    $query = new Query('/ppp/secret/enable');
+    $query->add('=.id=' . $subscriber['user']);
+    $client->write($query);
+
+    $newEndDate = date('Y-m-d', strtotime("+30 days"));
+    $sql = "UPDATE subscribers SET status='active', reason='', endDate=:newEnd WHERE id=:id";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':newEnd' => $newEndDate, ':id' => $id]);
+
+    respond(["success" => true, "message" => "Subscription Activated +30 Days."]);
+	} elseif ($action === "edit") { // ✅ تأكد من كتابة الشرط بدون أخطاء
+    $id = $_POST['id'] ?? null;
+    if (!$id) respond(["error" => "No ID provided"]);
+
+    $newName = $_POST['newName'] ?? '';
+    $newType = $_POST['newType'] ?? '';
+    $newAmount = $_POST['newAmount'] ?? '';
+
+    $stmt = $pdo->prepare("UPDATE subscribers SET name=:n, type=:t, amount=:a WHERE id=:id");
+    $stmt->execute([':n'=>$newName, ':t'=>$newType, ':a'=>$newAmount, ':id'=>$id]);
+
+    respond(["success" => true, "message" => "Subscriber updated."]);
+}
+
+} elseif ($action === "disable") {
+    $id = $_POST['id'] ?? null;
+    if (!$id) respond(["error" => "No ID provided"]);
+
+    $stmt = $pdo->prepare("SELECT user FROM subscribers WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $subscriber = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$subscriber) {
+        respond(["error" => "Subscriber not found"]);
+    }
+
+    $query = new Query('/ppp/secret/disable');
+    $query->add('=.id=' . $subscriber['user']);
+    $client->write($query);
+
+    $sql = "UPDATE subscribers SET status='stopped', reason='تم الإيقاف بسبب الديون' WHERE id=:id";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':id' => $id]);
+
+    respond(["success" => true, "message" => "Subscription Disabled."]);
+
+} elseif ($action === "delete") {
+    $id = $_POST['id'] ?? null;
+    if (!$id) respond(["error" => "No ID provided"]);
+
+    $stmt = $pdo->prepare("SELECT user FROM subscribers WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+    $subscriber = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$subscriber) {
+        respond(["error" => "Subscriber not found"]);
+    }
+
+    $query = new Query('/ppp/secret/remove');
+    $query->add('=.id=' . $subscriber['user']);
+    $client->write($query);
+
+    $stmt = $pdo->prepare("DELETE FROM subscribers WHERE id = :id");
+    $stmt->execute([':id' => $id]);
+
+    respond(["success" => true, "message" => "Subscriber Deleted."]);
+
+} else {
+    respond(["error" => "No valid action provided."]);
+}
