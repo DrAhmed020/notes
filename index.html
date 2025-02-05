@@ -1,161 +1,581 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ملاحظات الطلاب</title>
-    <style>
-        /* تنسيقات كما هي */
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f8f8;
-            text-align: center;
-        }
-        .container {
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        button {
-            padding: 10px 20px;
-            margin: 10px;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        input, textarea {
-            padding: 10px;
-            width: 100%;
-            margin: 10px 0;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-        }
-        .notes-list {
-            margin-top: 30px;
-        }
-        .note-item {
-            padding: 10px;
-            margin: 10px 0;
-            background-color: #f1f1f1;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .note-item img {
-            max-width: 100px;
-            max-height: 100px;
-            margin-left: 10px;
-        }
-    </style>
-    <!-- Firebase Scripts -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+  <meta charset="UTF-8">
+  <title>SAS - نظام الاشتراكات (باستخدام PHP + MySQL)</title>
 
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyDEWffPfy-fljp32H8AjemraCau-f9JN-M",
-            authDomain: "student-notes-app-3d196.firebaseapp.com",
-            projectId: "student-notes-app-3d196",
-            storageBucket: "student-notes-app-3d196.appspot.com",
-            messagingSenderId: "99837564904",
-            appId: "1:99837564904:web:6b880e2b80e439c8fcf65d",
-            measurementId: "G-N63JWQNTZF"
-        };
+  <!-- خط Cairo من Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet" />
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+  <style>
+    /* نفس التنسيقات السابقة تمامًا */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', sans-serif;
+    }
+    body {
+      background: linear-gradient(120deg, #c9f8ff, #fce2ff);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      background-color: #fff;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 10px;
+    }
 
-        // Load Notes
-        async function loadNotes() {
-            const notesList = document.getElementById('notes-list');
-            notesList.innerHTML = ''; // Clear current list
-            const querySnapshot = await getDocs(collection(db, "notes"));
-            querySnapshot.forEach((doc) => {
-                const note = doc.data();
-                const noteItem = document.createElement('div');
-                noteItem.classList.add('note-item');
-                noteItem.innerHTML = `
-                    <div>
-                        <strong>${note.name}</strong> - ${note.grade}
-                        <p>${note.note}</p>
-                        ${note.image ? `<img src="${note.image}" alt="صورة">` : ''}
-                    </div>
-                    <button onclick="deleteNote('${doc.id}')">حذف</button>
-                `;
-                notesList.appendChild(noteItem);
-            });
-        }
+    /* التبويبات العلوية */
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .tabs button {
+      background: #3498db;
+      color: #fff;
+      border: none;
+      padding: 12px 20px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 25px;
+      transition: background 0.3s, transform 0.2s;
+    }
+    .tabs button:hover {
+      background: #2980b9;
+      transform: scale(1.05);
+    }
+    .tabs button.active {
+      background: #2980b9;
+    }
 
-        // Add Note
-        async function addNote() {
-            const name = document.getElementById('name').value;
-            const grade = document.getElementById('grade').value;
-            const note = document.getElementById('note').value;
-            const imageInput = document.getElementById('image');
-            let image = null;
+    /* أقسام المحتوى */
+    .section {
+      display: none; /* مخفية افتراضيًا */
+      background: #f9f9f9;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .section.active {
+      display: block; /* عرض القسم الفعال */
+    }
 
-            if (imageInput.files.length > 0) {
-                const reader = new FileReader();
-                reader.onload = async function (e) {
-                    image = e.target.result;
-                    await addDoc(collection(db, "notes"), { name, grade, note, image });
-                    loadNotes();
-                };
-                reader.readAsDataURL(imageInput.files[0]);
-            } else {
-                await addDoc(collection(db, "notes"), { name, grade, note, image });
-                loadNotes();
-            }
-        }
+    /* تبويب المشتركين */
+    .search-box {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .search-box input[type="text"] {
+      padding: 10px;
+      width: 250px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .search-box input[type="text"]:focus {
+      border-color: #3498db;
+    }
+    .search-box button {
+      background: #3498db;
+      color: #fff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.3s;
+    }
+    .search-box button:hover {
+      background: #2980b9;
+      transform: translateY(-2px);
+    }
 
-        // Delete Note
-        async function deleteNote(noteId) {
-            await deleteDoc(doc(db, "notes", noteId));
-            loadNotes();
-        }
+    .subscribers-list {
+      text-align: left;
+    }
+    .subscriber-card {
+      background: #fff;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      transition: background 0.3s;
+      position: relative;
+    }
+    .subscriber-card h3 {
+      margin-bottom: 5px;
+      font-size: 1.1rem;
+      color: #333;
+    }
+    .subscriber-card p {
+      margin: 4px 0;
+      line-height: 1.5;
+      color: #555;
+    }
 
-        // Form Submission
-        document.getElementById('note-form').addEventListener('submit', function (event) {
-            event.preventDefault();
-            addNote();
-            document.getElementById('note-form').reset();
-        });
+    /* أزرار تفعيل/تعديل/حذف */
+    .card-buttons {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    .card-buttons button {
+      border: none;
+      padding: 8px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s, transform 0.2s;
+    }
+    .card-buttons button:hover {
+      transform: scale(1.05);
+    }
+    .btn-activate {
+      background: #2ecc71;
+      color: #fff;
+    }
+    .btn-edit {
+      background: #f1c40f;
+      color: #fff;
+    }
+    .btn-delete {
+      background: #e74c3c;
+      color: #fff;
+    }
 
-        // On Page Load
-        window.onload = loadNotes;
-    </script>
+    /* لون أحمر عند الإيقاف */
+    .stopped {
+      background: #ffcccc !important;
+    }
+    /* لون أصفر عند الاقتراب (3 أيام أو أقل) */
+    .warning {
+      background: #fff899 !important;
+    }
+
+    /* تبويب إضافة مشترك */
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1rem;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .form-group input[type="checkbox"] {
+      transform: scale(1.2);
+      margin-right: 5px;
+    }
+    .form-group button {
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.3s;
+    }
+    .form-group button:hover {
+      background: #2ecc71;
+      transform: translateY(-2px);
+    }
+
+    /* فوتر */
+    .footer {
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: #555;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>ملاحظات الطلاب</h1>
-        
-        <!-- زر الانتقال لعرض الملاحظات -->
-        <a href="notes.html" style="text-decoration: none;">
-            <button>عرض ملاحظات الطلاب</button>
-        </a>
+  <div class="container">
+    <h1>SAS - نظام الاشتراكات</h1>
 
-        <form id="note-form">
-            <input type="text" id="name" placeholder="الاسم" required>
-            <input type="text" id="grade" placeholder="المرحلة" required>
-            <textarea id="note" placeholder="اكتب ملاحظتك هنا" required></textarea>
-            <input type="file" id="image" accept="image/*">
-            <button type="submit" id="submit-note">مشاركة الملاحظة</button>
-        </form>
-
-        <div class="notes-list" id="notes-list">
-            <!-- سيتم عرض الملاحظات هنا -->
-        </div>
+    <!-- التبويبات -->
+    <div class="tabs">
+      <button id="tabListBtn" class="active" onclick="showSection(0)">المشتركين</button>
+      <button id="tabAddBtn" onclick="showSection(1)">إضافة مشترك</button>
     </div>
+
+    <!-- القسم الأول: عرض المشتركين مع البحث -->
+    <div class="section active" id="listSection">
+      <h2>المشتركين</h2>
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="ابحث عن اسم مشترك..." />
+        <button id="searchBtn">بحث</button>
+      </div>
+      <div class="subscribers-list" id="subscribersList"></div>
+    </div>
+
+    <!-- القسم الثاني: إضافة مشترك -->
+    <div class="section" id="addSection">
+      <h2>إضافة مشترك</h2>
+      <div class="form-group">
+        <label>اسم المشترك</label>
+        <input type="text" id="subName" placeholder="مثال: أحمد محمد" />
+      </div>
+      <div class="form-group">
+        <label>اسم اليوزر</label>
+        <input type="text" id="subUser" placeholder="مثال: ahmed123" />
+      </div>
+      <div class="form-group">
+        <label>كلمة السر</label>
+        <input type="password" id="subPass" placeholder="******" />
+      </div>
+      <div class="form-group">
+        <label>نوع الاشتراك</label>
+        <select id="subType">
+          <option value="لايت">لايت</option>
+          <option value="ايكونمي">ايكونمي</option>
+          <option value="بلص">بلص</option>
+          <option value="ستندر">ستندر</option>
+          <option value="تربو">تربو</option>
+          <option value="بزنز">بزنز</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>قيمة الاشتراك</label>
+        <input type="text" id="subAmount" placeholder="مثال: 15000" />
+      </div>
+      <div class="form-group">
+        <input type="checkbox" id="subDebt" />
+        <label for="subDebt" style="display:inline;">تفعيل بالأجل</label>
+      </div>
+      <div class="form-group">
+        <button onclick="addSubscriber()">إضافة المشترك</button>
+      </div>
+    </div>
+
+    <!-- فوتر -->
+    <div class="footer">
+      <p>جميع الحقوق محفوظة &copy; مشروع SAS</p>
+    </div>
+  </div>
+
+  <!-- سكربت رئيسي للتعامل مع api.php -->
+  <script>
+    // مصفوفة في الذاكرة لجلب بيانات المشتركين من قاعدة MySQL عبر api.php
+    let subscribers = [];
+
+    // دالة إظهار وإخفاء أقسام الواجهة
+    function showSection(index) {
+      const sections = [
+        document.getElementById("listSection"),
+        document.getElementById("addSection")
+      ];
+      const buttons = [
+        document.getElementById("tabListBtn"),
+        document.getElementById("tabAddBtn")
+      ];
+      // إخفاء الجميع
+      sections.forEach(sec => sec.classList.remove("active"));
+      buttons.forEach(btn => btn.classList.remove("active"));
+      // إظهار المحدد
+      sections[index].classList.add("active");
+      buttons[index].classList.add("active");
+
+      // إذا عدنا لتبويب المشتركين
+      if (index === 0) renderSubscribers();
+    }
+
+    // تحميل جميع المشتركين من api.php?action=load
+    async function loadSubscribers() {
+      try {
+        let response = await fetch("api.php?action=load");
+        let data = await response.json();
+        subscribers = data; // نخزنهم
+        renderSubscribers();
+      } catch (error) {
+        console.error("خطأ أثناء تحميل المشتركين:", error);
+        alert("حدث خطأ أثناء تحميل البيانات.");
+      }
+    }
+
+    // عرض المشتركين
+    function renderSubscribers() {
+      const listContainer = document.getElementById("subscribersList");
+      listContainer.innerHTML = "";
+
+      const query = document.getElementById("searchInput").value.trim();
+      // فلترة بحسب الاسم
+      let filtered = subscribers.filter(sub => {
+        return sub.name.includes(query);
+      });
+
+      if (filtered.length === 0) {
+        listContainer.innerHTML = "<p>لا توجد نتائج مطابقة.</p>";
+        return;
+      }
+
+      filtered.forEach(sub => {
+        const card = document.createElement("div");
+        card.classList.add("subscriber-card");
+
+        // تلوين أحمر إن كان status=stopped
+        if (sub.status === "stopped") {
+          card.classList.add("stopped");
+        }
+        // تلوين أصفر إذا بقي <=3 أيام
+        const daysLeft = calcDaysLeft(sub.endDate);
+        if (sub.status !== "stopped" && daysLeft <= 3) {
+          card.classList.add("warning");
+        }
+
+        card.innerHTML = `
+          <h3>${sub.name} (${sub.user})</h3>
+          <p><strong>نوع الاشتراك:</strong> ${sub.type}</p>
+          <p><strong>قيمة الاشتراك:</strong> ${sub.amount}</p>
+          <p><strong>تاريخ الانتهاء:</strong> ${sub.endDate || ""} 
+             <em>(باقي ${daysLeft} يوم)</em></p>
+          ${
+            sub.isDebt == 1
+            ? `<p style="color:red; font-weight:bold;">بالأجل</p>`
+            : ""
+          }
+        `;
+
+        // أزرار تفعيل/تعديل/حذف
+        const btnContainer = document.createElement("div");
+        btnContainer.classList.add("card-buttons");
+
+        // زر تفعيل
+        const activateBtn = document.createElement("button");
+        activateBtn.textContent = "تفعيل";
+        activateBtn.classList.add("btn-activate");
+        activateBtn.onclick = () => activateSubscriber(sub.id);
+
+        // زر تعديل
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "تعديل";
+        editBtn.classList.add("btn-edit");
+        editBtn.onclick = () => editSubscriber(sub.id);
+
+        // زر حذف
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "حذف";
+        deleteBtn.classList.add("btn-delete");
+        deleteBtn.onclick = () => deleteSubscriber(sub.id);
+
+        btnContainer.appendChild(activateBtn);
+        btnContainer.appendChild(editBtn);
+        btnContainer.appendChild(deleteBtn);
+
+        card.appendChild(btnContainer);
+        listContainer.appendChild(card);
+      });
+    }
+
+    // حساب الأيام المتبقية
+    function calcDaysLeft(endStr) {
+      if (!endStr) return 0;
+      let end = new Date(endStr + "T00:00:00");
+      let now = new Date();
+      let diff = end - now;
+      return Math.ceil(diff / (1000*60*60*24));
+    }
+
+    // تفعيل: api.php?action=activate
+    async function activateSubscriber(id) {
+      try {
+        let formData = new FormData();
+        formData.append("id", id);
+        let resp = await fetch("api.php?action=activate", {
+          method: "POST",
+          body: formData
+        });
+        let result = await resp.json();
+        if (result.success) {
+          alert("تم التفعيل +30 يومًا.");
+          await loadSubscribers();
+        } else {
+          alert("خطأ أثناء التفعيل: " + (result.error || result.message));
+        }
+      } catch (error) {
+        console.error("تفعيل:", error);
+      }
+    }
+
+    // تعديل: يعرض prompt للاسم والنوع والقيمة
+    async function editSubscriber(id) {
+      let sub = subscribers.find(s => s.id == id);
+      if (!sub) return;
+
+      let newName = prompt("أدخل الاسم الجديد:", sub.name);
+      if (newName === null) return;
+      let newType = prompt("أدخل النوع الجديد للاشتراك:", sub.type);
+      if (newType === null) return;
+      let newAmount = prompt("أدخل قيمة الاشتراك الجديدة:", sub.amount);
+      if (newAmount === null) return;
+
+      try {
+        let formData = new FormData();
+        formData.append("id", id);
+        formData.append("newName", newName);
+        formData.append("newType", newType);
+        formData.append("newAmount", newAmount);
+
+        let resp = await fetch("api.php?action=edit", {
+          method: "POST",
+          body: formData
+        });
+        let result = await resp.json();
+        if (result.success) {
+          alert("تم تعديل بيانات المشترك.");
+          await loadSubscribers();
+        } else {
+          alert("خطأ أثناء التعديل: " + (result.error || result.message));
+        }
+      } catch (error) {
+        console.error("تعديل:", error);
+      }
+    }
+
+    // حذف: api.php?action=delete
+    async function deleteSubscriber(id) {
+      if (!confirm("هل أنت متأكد من حذف هذا المشترك؟")) return;
+      try {
+        let formData = new FormData();
+        formData.append("id", id);
+
+        let resp = await fetch("api.php?action=delete", {
+          method: "POST",
+          body: formData
+        });
+        let result = await resp.json();
+        if (result.success) {
+          alert("تم حذف المشترك.");
+          await loadSubscribers();
+        } else {
+          alert("خطأ أثناء الحذف: " + (result.error || result.message));
+        }
+      } catch (error) {
+        console.error("حذف:", error);
+      }
+    }
+
+    // إضافة مشترك: api.php?action=add
+    async function addSubscriber() {
+      const name = document.getElementById("subName").value.trim();
+      const user = document.getElementById("subUser").value.trim();
+      const pass = document.getElementById("subPass").value.trim();
+      const type = document.getElementById("subType").value;
+      const amount = document.getElementById("subAmount").value.trim();
+      const isDebt = document.getElementById("subDebt").checked ? 1 : 0;
+
+      if (!name || !user || !pass || !amount) {
+        alert("الرجاء ملء جميع الحقول المطلوبة.");
+        return;
+      }
+
+      // بناء FormData لإرسالها لـ api.php
+      let formData = new FormData();
+      formData.append("name", name);
+      formData.append("user", user);
+      formData.append("pass", pass);
+      formData.append("type", type);
+      formData.append("amount", amount);
+      formData.append("isDebt", isDebt);
+      // status=active, reason="", startDate/endDate سنتركها default في api.php أو يمكنك إرفاقها
+      // لكن إن أردت، يمكن تمريرها:
+      // formData.append("startDate", someValue);
+      // formData.append("endDate", someValue);
+
+      try {
+        let resp = await fetch("api.php?action=add", {
+          method: "POST",
+          body: formData
+        });
+        let result = await resp.json();
+        if (result.success) {
+          alert("تمت إضافة المشترك بنجاح!");
+          // إعادة تعيين الحقول
+          document.getElementById("subName").value = "";
+          document.getElementById("subUser").value = "";
+          document.getElementById("subPass").value = "";
+          document.getElementById("subType").value = "لايت";
+          document.getElementById("subAmount").value = "";
+          document.getElementById("subDebt").checked = false;
+
+          // عد للقسم الأول
+          showSection(0);
+          await loadSubscribers();
+        } else {
+          alert("حدث خطأ أثناء إضافة المشترك: " + (result.error || result.message));
+        }
+      } catch (error) {
+        console.error("إضافة مشترك:", error);
+      }
+    }
+
+    // تحويل Date لـ yyyy-mm-dd لو احتجت
+    function formatDate(d) {
+      let yyyy = d.getFullYear();
+      let mm = (d.getMonth() + 1).toString().padStart(2, "0");
+      let dd = d.getDate().toString().padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // عند تحميل الصفحة
+    document.addEventListener("DOMContentLoaded", async () => {
+      // زر البحث
+      document.getElementById("searchBtn").addEventListener("click", () => {
+        renderSubscribers();
+      });
+      document.getElementById("searchInput").addEventListener("input", () => {
+        renderSubscribers();
+      });
+
+      // بدءًا من تبويب المشتركين
+      document.getElementById("tabListBtn").classList.add("active");
+      document.getElementById("listSection").classList.add("active");
+
+      // حمل البيانات من قاعدة البيانات عبر api.php
+      await loadSubscribers();
+    });
+
+    // نجعل الدوال مرئية للعناصر (onclick) في HTML
+    window.showSection = showSection;
+    window.addSubscriber = addSubscriber;
+    window.activateSubscriber = activateSubscriber;
+    window.editSubscriber = editSubscriber;
+    window.deleteSubscriber = deleteSubscriber;
+  </script>
 </body>
 </html>
